@@ -30,7 +30,8 @@ public class MoviesInfoController {
     public Mono<ResponseEntity<MovieInfo>> updateMovieInfo(@PathVariable String id, @RequestBody MovieInfo updatedMovieInfo) {
         return  moviesInfoService.updateMovieInfo(updatedMovieInfo,id)
                 .map(ResponseEntity.ok()::body)
-                .log();
+                .switchIfEmpty(Mono.just(ResponseEntity.notFound().build())).log();
+
     }
 
     @GetMapping("/movieinfos/{id}")
@@ -40,7 +41,10 @@ public class MoviesInfoController {
 
 
     @GetMapping("/movieinfos")
-    public Flux<MovieInfo> getMoviesInfos() {
+    public Flux<MovieInfo> getMoviesInfos(@RequestParam(value = "year", required = false) Integer year) {
+        if(year!=null) {
+            return moviesInfoService.getMovieInfoByYear(year);
+        }
         return moviesInfoService.getAllMovieInfo().log();
     }
 
