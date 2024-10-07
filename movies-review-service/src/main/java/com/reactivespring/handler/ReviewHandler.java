@@ -1,7 +1,11 @@
 package com.reactivespring.handler;
 
 import com.reactivespring.domain.Review;
+import com.reactivespring.exception.ReviewDataException;
 import com.reactivespring.repository.ReviewReactiveRepository;
+import jdk.nashorn.internal.runtime.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.server.ServerRequest;
@@ -9,8 +13,16 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import javax.validation.ConstraintViolation;
+import javax.validation.ConstraintViolationException;
+import javax.validation.Validator;
+import java.util.stream.Collectors;
+
 @Component
+@Slf4j
 public class ReviewHandler {
+    @Autowired
+    private Validator validator;
 
     private ReviewReactiveRepository reviewReactiveRepository;
 
@@ -22,11 +34,27 @@ public class ReviewHandler {
     public Mono<ServerResponse> addReview(ServerRequest request) {
 
         return   request.bodyToMono(Review.class)
+                .doOnNext(this::validate)
                 .flatMap(reviewReactiveRepository::save)
                 .flatMap(ServerResponse.status(HttpStatus.CREATED)::bodyValue)
                 ;
 
     }
+
+    private void validate(Review review) {
+        var constrainViolations = validator.validate(review);
+        log.info("constraintViolations: {}", constrainViolations);
+        if(!constrainViolations.isEmpty()) {
+            var errorMessage = constrainViolations
+                    .stream()
+                    .map(ConstraintViolation::getMessage)
+                    .sorted()
+                    .collect(Collectors.joining(","));
+            throw new ReviewDataException(errorMessage);
+        }
+    }
+
+
     public Mono<ServerResponse> getReviews(ServerRequest request) {
         var movieInfoId = request.queryParam("movieInfoId");
         Flux<Review> reviewsFlux;
@@ -54,6 +82,7 @@ public class ReviewHandler {
                         })
                         .flatMap(reviewReactiveRepository::save)
                         .flatMap(savedReview -> ServerResponse.ok().bodyValue(savedReview))
+                        .switchIfEmpty(ServerResponse.notFound().build())
                 );
     }
 
